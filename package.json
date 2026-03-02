@@ -1,0 +1,40 @@
+{
+  "name": "compress-image",
+  "version": "1.0.0",
+  "description": "A TypeScript wrapper for Tinify API (TinyPNG/TinyJPG)",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "rimraf dist && tsc",
+    "prepublishOnly": "npm run build",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "README.zh-CN.md"
+  ],
+  "keywords": [
+    "tinify",
+    "tinypng",
+    "tinyjpg",
+    "compress",
+    "image",
+    "typescript"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "fast-glob": "^3.3.3",
+    "fs-extra": "^11.3.3",
+    "micromatch": "^4.0.8",
+    "tinify": "^1.8.2"
+  },
+  "devDependencies": {
+    "@types/fs-extra": "^11.0.4",
+    "@types/micromatch": "^4.0.10",
+    "@types/node": "^25.3.3",
+    "rimraf": "^6.1.3",
+    "typescript": "^5.9.3"
+  }
+}
