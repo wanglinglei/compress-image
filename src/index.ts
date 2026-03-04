@@ -102,7 +102,7 @@ export class TinifyWrapper {
    * 根据配置压缩目录中的所有图片
    */
   async compressDirectory(options: CompressOptions): Promise<void> {
-    const { targetDir, whitelist = [], outputDir, concurrency = 5, minSize = 20 * 1024 } = options;
+    const { targetDir, whitelist = [], outputDir, concurrency = 5, minSize = 20 * 1024, dryRun = false, backup = false } = options;
     const absTargetDir = path.resolve(targetDir);
     const cwd = process.cwd();
     
@@ -118,6 +118,9 @@ export class TinifyWrapper {
     }
 
     console.log(chalk.blue(`在 ${absTargetDir} 中找到 ${images.length} 张图片`));
+    if (dryRun) {
+        console.log(chalk.magenta('=== 空跑模式 (Dry Run) 已启用 ==='));
+    }
 
     this.cache = await loadCache(this.cacheFilePath);
     let processedCount = 0;
@@ -184,11 +187,26 @@ export class TinifyWrapper {
             return;
           }
 
-          // 正在压缩...
-          
+          // 如果是空跑模式，直接跳过实际压缩
+          if (dryRun) {
+            processedCount++;
+            bar.increment(1);
+            // 在空跑模式下，我们可能想记录下哪些文件会被压缩，但进度条模式下不好输出
+            // 可以考虑收集起来最后输出，或者只依赖最后的统计
+            return;
+          }
+
           const destinationPath = outputDir 
             ? path.join(path.resolve(outputDir), relativeToTarget)
             : imagePath;
+
+          // 自动备份逻辑
+          if (backup) {
+            const backupDir = path.resolve(cwd, '.tinify-backup');
+            const backupPath = path.join(backupDir, relativeToCwd);
+            await fs.ensureDir(path.dirname(backupPath));
+            await fs.copy(imagePath, backupPath, { overwrite: true });
+          }
 
           // 确保目标目录存在
           await fs.ensureDir(path.dirname(destinationPath));
@@ -217,10 +235,16 @@ export class TinifyWrapper {
     await Promise.all(tasks);
     bar.stop();
 
-    await saveCache(this.cacheFilePath, this.cache);
+    if (!dryRun) {
+        await saveCache(this.cacheFilePath, this.cache);
+    }
     
     console.log(chalk.green('\n压缩完成！'));
-    console.log(chalk.green(`已处理: ${processedCount}`));
+    if (dryRun) {
+        console.log(chalk.magenta(`[空跑] 预计处理: ${processedCount}`));
+    } else {
+        console.log(chalk.green(`已处理: ${processedCount}`));
+    }
     console.log(chalk.yellow(`已跳过: ${skippedCount}`));
     
     if (errorCount > 0) {
@@ -229,6 +253,10 @@ export class TinifyWrapper {
         errors.forEach(err => console.log(chalk.red(`- ${err}`)));
     } else {
         console.log(chalk.gray(`错误: ${errorCount}`));
+    }
+
+    if (backup && processedCount > 0 && !dryRun) {
+        console.log(chalk.cyan(`已备份 ${processedCount} 个文件到 .tinify-backup 目录`));
     }
   }
 }

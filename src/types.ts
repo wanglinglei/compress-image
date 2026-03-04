@@ -27,6 +27,17 @@ export interface CompressOptions {
    * 小于此大小的文件将被跳过。
    */
   minSize?: number;
+  /**
+   * 是否启用空跑模式。
+   * 如果为 true，将只打印将要压缩的文件，不执行实际压缩。
+   */
+  dryRun?: boolean;
+  /**
+   * 是否启用自动备份。
+   * 如果为 true，将在压缩前备份源文件。仅备份被压缩的文件。
+   * 备份文件将存储在项目根目录下的 .tinify-backup 目录中。
+   */
+  backup?: boolean;
 }
 
 export interface CacheData {
