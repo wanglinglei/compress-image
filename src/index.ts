@@ -3,6 +3,7 @@ import fg from 'fast-glob';
 import fs from 'fs-extra';
 import path from 'path';
 import micromatch from 'micromatch';
+import pLimit from 'p-limit';
 import { ResizeOptions, CompressOptions, CacheData } from './types';
 import { getFileHash, loadCache, saveCache } from './utils';
 
@@ -99,7 +100,7 @@ export class TinifyWrapper {
    * 根据配置压缩目录中的所有图片
    */
   async compressDirectory(options: CompressOptions): Promise<void> {
-    const { targetDir, whitelist = [], outputDir } = options;
+    const { targetDir, whitelist = [], outputDir, concurrency = 5 } = options;
     const absTargetDir = path.resolve(targetDir);
     const cwd = process.cwd();
     
@@ -121,63 +122,70 @@ export class TinifyWrapper {
     let skippedCount = 0;
     let errorCount = 0;
 
+    const limit = pLimit(concurrency);
+    const tasks = [];
+
     for (const imagePath of images) {
-      // 获取相对于 CWD 的路径，用于匹配白名单
-      const relativeToCwd = path.relative(cwd, imagePath);
-      // 获取相对于 targetDir 的路径，用于显示和输出结构
-      const relativeToTarget = path.relative(absTargetDir, imagePath);
-      
-      // 检查白名单 (使用 micromatch 支持通配符)
-      // 我们同时检查相对于 CWD 的路径和相对于 targetDir 的路径，以提供灵活性
-      const isWhitelisted = micromatch.isMatch(relativeToCwd, whitelist) || 
-                            micromatch.isMatch(relativeToTarget, whitelist) ||
-                            micromatch.isMatch(imagePath, whitelist);
-
-      if (isWhitelisted) {
-        console.log(`跳过白名单文件: ${relativeToTarget}`);
-        skippedCount++;
-        continue;
-      }
-
-      try {
-        const currentHash = await getFileHash(imagePath);
+      tasks.push(limit(async () => {
+        // 获取相对于 CWD 的路径，用于匹配白名单
+        const relativeToCwd = path.relative(cwd, imagePath);
+        // 获取相对于 targetDir 的路径，用于显示和输出结构
+        const relativeToTarget = path.relative(absTargetDir, imagePath);
         
-        // 检查是否已压缩
-        // 我们使用相对于 CWD 的路径作为键，以保持跨机器（如果 CWD 是项目根目录）的一致性
-        const cacheKey = relativeToCwd;
+        // 检查白名单 (使用 micromatch 支持通配符)
+        // 我们同时检查相对于 CWD 的路径和相对于 targetDir 的路径，以提供灵活性
+        const isWhitelisted = micromatch.isMatch(relativeToCwd, whitelist) || 
+                              micromatch.isMatch(relativeToTarget, whitelist) ||
+                              micromatch.isMatch(imagePath, whitelist);
 
-        if (this.cache[cacheKey] === currentHash) {
-          console.log(`跳过已压缩文件: ${relativeToTarget}`);
+        if (isWhitelisted) {
+          console.log(`跳过白名单文件: ${relativeToTarget}`);
           skippedCount++;
-          continue;
+          return;
         }
 
-        console.log(`正在压缩: ${relativeToTarget}...`);
-        
-        const destinationPath = outputDir 
-          ? path.join(path.resolve(outputDir), relativeToTarget)
-          : imagePath;
+        try {
+          const currentHash = await getFileHash(imagePath);
+          
+          // 检查是否已压缩
+          // 我们使用相对于 CWD 的路径作为键，以保持跨机器（如果 CWD 是项目根目录）的一致性
+          const cacheKey = relativeToCwd;
 
-        // 确保目标目录存在
-        await fs.ensureDir(path.dirname(destinationPath));
+          if (this.cache[cacheKey] === currentHash) {
+            console.log(`跳过已压缩文件: ${relativeToTarget}`);
+            skippedCount++;
+            return;
+          }
 
-        await this.compressFile(imagePath, destinationPath);
-        
-        // 更新缓存
-        let newHash = currentHash;
-        if (!outputDir || path.resolve(outputDir) === absTargetDir) {
-            // 覆盖模式：计算新文件的哈希值
-            newHash = await getFileHash(destinationPath);
+          console.log(`正在压缩: ${relativeToTarget}...`);
+          
+          const destinationPath = outputDir 
+            ? path.join(path.resolve(outputDir), relativeToTarget)
+            : imagePath;
+
+          // 确保目标目录存在
+          await fs.ensureDir(path.dirname(destinationPath));
+
+          await this.compressFile(imagePath, destinationPath);
+          
+          // 更新缓存
+          let newHash = currentHash;
+          if (!outputDir || path.resolve(outputDir) === absTargetDir) {
+              // 覆盖模式：计算新文件的哈希值
+              newHash = await getFileHash(destinationPath);
+          }
+          
+          this.cache[cacheKey] = newHash;
+          processedCount++;
+          
+        } catch (err) {
+          console.error(`压缩 ${relativeToTarget} 时出错:`, err);
+          errorCount++;
         }
-        
-        this.cache[cacheKey] = newHash;
-        processedCount++;
-        
-      } catch (err) {
-        console.error(`压缩 ${relativeToTarget} 时出错:`, err);
-        errorCount++;
-      }
+      }));
     }
+
+    await Promise.all(tasks);
 
     await saveCache(this.cacheFilePath, this.cache);
     

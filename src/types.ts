@@ -18,6 +18,10 @@ export interface CompressOptions {
    * 输出目录。如果未设置，将覆盖源文件
    */
   outputDir?: string;
+  /**
+   * 并发数，默认为 5
+   */
+  concurrency?: number;
 }
 
 export interface CacheData {
