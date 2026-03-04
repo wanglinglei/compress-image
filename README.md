@@ -11,6 +11,9 @@ A TypeScript wrapper for the Tinify API (TinyPNG/TinyJPG), designed for frontend
 - **Incremental Compression**: Skip files that have already been compressed (based on content hash).
 - **Output Control**: Overwrite source files or output to a new directory.
 - **Metadata Preservation**: Preserve copyright, creation date, and location data.
+- **Concurrency Control**: Compress multiple images in parallel.
+- **File Size Threshold**: Skip files smaller than a specified size.
+- **Interactive Progress Bar**: Visual feedback during compression.
 
 ## Installation
 
@@ -43,7 +46,14 @@ await tinify.compressDirectory({
     '**/*.min.png'
   ],
   // Optional: output to a different directory. If omitted, source files will be overwritten.
-  // outputDir: 'dist/assets' 
+  // outputDir: 'dist/assets',
+  
+  // Optional: concurrency limit (default: 5)
+  concurrency: 5,
+  
+  // Optional: minimum file size in bytes to compress (default: 20KB)
+  // Files smaller than this will be skipped.
+  minSize: 10 * 1024 
 });
 ```
 

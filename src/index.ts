@@ -4,6 +4,8 @@ import fs from 'fs-extra';
 import path from 'path';
 import micromatch from 'micromatch';
 import pLimit from 'p-limit';
+import chalk from 'chalk';
+import cliProgress from 'cli-progress';
 import { ResizeOptions, CompressOptions, CacheData } from './types';
 import { getFileHash, loadCache, saveCache } from './utils';
 
@@ -111,19 +113,33 @@ export class TinifyWrapper {
     });
 
     if (images.length === 0) {
-      console.log('目标目录中未找到图片。');
+      console.log(chalk.yellow('目标目录中未找到图片。'));
       return;
     }
 
-    console.log(`在 ${absTargetDir} 中找到 ${images.length} 张图片`);
+    console.log(chalk.blue(`在 ${absTargetDir} 中找到 ${images.length} 张图片`));
 
     this.cache = await loadCache(this.cacheFilePath);
     let processedCount = 0;
     let skippedCount = 0;
     let errorCount = 0;
+    const errors: string[] = [];
 
     const limit = pLimit(concurrency);
     const tasks = [];
+
+    // 创建进度条
+    const bar = new cliProgress.SingleBar({
+        format: '进度 |' + chalk.cyan('{bar}') + '| {percentage}% || {value}/{total} 文件 || 正在处理: {file}',
+        barCompleteChar: '\u2588',
+        barIncompleteChar: '\u2591',
+        hideCursor: true,
+        clearOnComplete: false
+    });
+
+    bar.start(images.length, 0, {
+        file: '准备中...'
+    });
 
     for (const imagePath of images) {
       tasks.push(limit(async () => {
@@ -132,15 +148,19 @@ export class TinifyWrapper {
         // 获取相对于 targetDir 的路径，用于显示和输出结构
         const relativeToTarget = path.relative(absTargetDir, imagePath);
         
+        // 更新进度条上的文件名 (不增加进度)
+        bar.increment(0, {
+            file: relativeToTarget
+        });
+
         // 检查白名单 (使用 micromatch 支持通配符)
-        // 我们同时检查相对于 CWD 的路径和相对于 targetDir 的路径，以提供灵活性
         const isWhitelisted = micromatch.isMatch(relativeToCwd, whitelist) || 
                               micromatch.isMatch(relativeToTarget, whitelist) ||
                               micromatch.isMatch(imagePath, whitelist);
 
         if (isWhitelisted) {
-          console.log(`跳过白名单文件: ${relativeToTarget}`);
           skippedCount++;
+          bar.increment(1);
           return;
         }
 
@@ -148,24 +168,23 @@ export class TinifyWrapper {
           // 检查文件大小
           const stats = await fs.stat(imagePath);
           if (stats.size < minSize) {
-            console.log(`跳过过小文件 (${(stats.size / 1024).toFixed(2)}KB < ${(minSize / 1024).toFixed(2)}KB): ${relativeToTarget}`);
             skippedCount++;
+            bar.increment(1);
             return;
           }
 
           const currentHash = await getFileHash(imagePath);
           
           // 检查是否已压缩
-          // 我们使用相对于 CWD 的路径作为键，以保持跨机器（如果 CWD 是项目根目录）的一致性
           const cacheKey = relativeToCwd;
 
           if (this.cache[cacheKey] === currentHash) {
-            console.log(`跳过已压缩文件: ${relativeToTarget}`);
             skippedCount++;
+            bar.increment(1);
             return;
           }
 
-          console.log(`正在压缩: ${relativeToTarget}...`);
+          // 正在压缩...
           
           const destinationPath = outputDir 
             ? path.join(path.resolve(outputDir), relativeToTarget)
@@ -185,22 +204,32 @@ export class TinifyWrapper {
           
           this.cache[cacheKey] = newHash;
           processedCount++;
+          bar.increment(1);
           
-        } catch (err) {
-          console.error(`压缩 ${relativeToTarget} 时出错:`, err);
+        } catch (err: any) {
           errorCount++;
+          errors.push(`${relativeToTarget}: ${err.message || err}`);
+          bar.increment(1);
         }
       }));
     }
 
     await Promise.all(tasks);
+    bar.stop();
 
     await saveCache(this.cacheFilePath, this.cache);
     
-    console.log('\n压缩完成。');
-    console.log(`已处理: ${processedCount}`);
-    console.log(`已跳过: ${skippedCount}`);
-    console.log(`错误: ${errorCount}`);
+    console.log(chalk.green('\n压缩完成！'));
+    console.log(chalk.green(`已处理: ${processedCount}`));
+    console.log(chalk.yellow(`已跳过: ${skippedCount}`));
+    
+    if (errorCount > 0) {
+        console.log(chalk.red(`错误: ${errorCount}`));
+        console.log(chalk.red('错误详情:'));
+        errors.forEach(err => console.log(chalk.red(`- ${err}`)));
+    } else {
+        console.log(chalk.gray(`错误: ${errorCount}`));
+    }
   }
 }
 
