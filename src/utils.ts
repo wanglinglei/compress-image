@@ -18,6 +18,7 @@ export async function getFileHash(filePath: string): Promise<string> {
 export async function loadCache(cacheFilePath: string): Promise<CacheData> {
   if (await fs.pathExists(cacheFilePath)) {
     try {
+      // 直接读取，不进行迁移逻辑
       return await fs.readJson(cacheFilePath);
     } catch (error) {
       console.warn('加载缓存文件失败，将使用空缓存。');

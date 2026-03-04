@@ -17,7 +17,10 @@ export class TinifyWrapper {
 
   constructor(apiKey: string) {
     tinify.key = apiKey;
-    this.cacheFilePath = path.resolve(process.cwd(), '.tinify-cache.json');
+    // 默认路径逻辑修改：尝试获取执行脚本的目录
+    const entryScript = process.argv[1];
+    const baseDir = entryScript ? path.dirname(entryScript) : process.cwd();
+    this.cacheFilePath = path.resolve(baseDir, '.tinify-cache.json');
   }
 
   /**
@@ -123,6 +126,7 @@ export class TinifyWrapper {
     }
 
     this.cache = await loadCache(this.cacheFilePath);
+    
     let processedCount = 0;
     let skippedCount = 0;
     let errorCount = 0;
@@ -179,9 +183,8 @@ export class TinifyWrapper {
           const currentHash = await getFileHash(imagePath);
           
           // 检查是否已压缩
-          const cacheKey = relativeToCwd;
-
-          if (this.cache[cacheKey] === currentHash) {
+          // 只要当前文件哈希在缓存中（无论是作为源文件还是压缩文件），就跳过
+          if (this.cache[currentHash]) {
             skippedCount++;
             bar.increment(1);
             return;
@@ -191,8 +194,6 @@ export class TinifyWrapper {
           if (dryRun) {
             processedCount++;
             bar.increment(1);
-            // 在空跑模式下，我们可能想记录下哪些文件会被压缩，但进度条模式下不好输出
-            // 可以考虑收集起来最后输出，或者只依赖最后的统计
             return;
           }
 
@@ -214,13 +215,13 @@ export class TinifyWrapper {
           await this.compressFile(imagePath, destinationPath);
           
           // 更新缓存
-          let newHash = currentHash;
-          if (!outputDir || path.resolve(outputDir) === absTargetDir) {
-              // 覆盖模式：计算新文件的哈希值
-              newHash = await getFileHash(destinationPath);
-          }
+          // 1. 记录源文件哈希
+          this.cache[currentHash] = "source";
+
+          // 2. 记录压缩后文件哈希
+          const newHash = await getFileHash(destinationPath);
+          this.cache[newHash] = "compressed";
           
-          this.cache[cacheKey] = newHash;
           processedCount++;
           bar.increment(1);
           

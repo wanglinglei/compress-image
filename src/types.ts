@@ -41,5 +41,7 @@ export interface CompressOptions {
 }
 
 export interface CacheData {
-  [filepath: string]: string; // filepath -> md5 hash
+  // Key: MD5 Hash, Value: "source" | "compressed"
+  // 只要文件的哈希值在这个 Map 中，就视为无需压缩
+  [hash: string]: string;
 }

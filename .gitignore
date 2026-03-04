@@ -1,3 +1,6 @@
 node_modules
 dist
 .DS_Store
+.tinify-backup/
+test-assets/
+test/
