@@ -1,6 +1,6 @@
 {
   "name": "tinify-compress-image",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "A TypeScript wrapper for Tinify API (TinyPNG/TinyJPG)",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
