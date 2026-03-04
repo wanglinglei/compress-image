@@ -100,7 +100,7 @@ export class TinifyWrapper {
    * 根据配置压缩目录中的所有图片
    */
   async compressDirectory(options: CompressOptions): Promise<void> {
-    const { targetDir, whitelist = [], outputDir, concurrency = 5 } = options;
+    const { targetDir, whitelist = [], outputDir, concurrency = 5, minSize = 20 * 1024 } = options;
     const absTargetDir = path.resolve(targetDir);
     const cwd = process.cwd();
     
@@ -145,6 +145,14 @@ export class TinifyWrapper {
         }
 
         try {
+          // 检查文件大小
+          const stats = await fs.stat(imagePath);
+          if (stats.size < minSize) {
+            console.log(`跳过过小文件 (${(stats.size / 1024).toFixed(2)}KB < ${(minSize / 1024).toFixed(2)}KB): ${relativeToTarget}`);
+            skippedCount++;
+            return;
+          }
+
           const currentHash = await getFileHash(imagePath);
           
           // 检查是否已压缩

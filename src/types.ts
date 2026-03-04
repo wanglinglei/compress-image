@@ -22,6 +22,11 @@ export interface CompressOptions {
    * 并发数，默认为 5
    */
   concurrency?: number;
+  /**
+   * 最小文件大小（单位：字节），默认为 20KB (20 * 1024)。
+   * 小于此大小的文件将被跳过。
+   */
+  minSize?: number;
 }
 
 export interface CacheData {
